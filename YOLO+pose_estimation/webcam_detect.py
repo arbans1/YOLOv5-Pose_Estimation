@@ -1,6 +1,6 @@
 import argparse
 import chainer
-
+import sys
 import cv2
 import torch
 from numpy import random
@@ -11,6 +11,13 @@ from utils.pose_detector import PoseDetector, draw_person_pose
 from utils.general import check_img_size, non_max_suppression, scale_coords, plot_one_box, set_logging
 from utils.torch_utils import select_device
 from multiprocessing import Process, Queue
+
+from PyQt5.QtWidgets import *
+from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot, Qt, QStringListModel
+from PyQt5 import uic
+from PyQt5.QtGui import QImage, QPixmap
+
+form_window = uic.loadUiType('./utils/exercise.ui')[0]
 
 # producer
 def setup(q1, q2, weights='yolov5s.pt', conf=0.4,
@@ -106,25 +113,60 @@ def pose_estimation(q1, q3, q4):
     chainer.config.enable_backprop = False
     chainer.config.train = False
     pose_detector = PoseDetector("posenet", "models/coco_posenet.npz", device=0)
+    num = [0, 0, 640, 480]
+    j = 0
     while True:
-        if not q4.empty() and not q1.empty():
+        if not q4.empty():
+            before_num = num
             num = q4.get()
-            img = q1.get()[num[1]:num[3], num[0]:num[2]]
-            poses, _ = pose_detector(img)
-            outq3 = poses, num
-            q3.put(outq3)
+            if before_num[0] != 0 and j % 7 != 0:
+                if before_num[0] < num[0]:
+                    num[0] = before_num[0]
+                if before_num[1] < num[1]:
+                    num[1] = before_num[1]
+                if before_num[2] > num[2]:
+                    num[2] = before_num[2]
+                if before_num[3] > num[3]:
+                    num[3] = before_num[3]
+            else:
+                pass
+            j+=1
+        if not q1.empty():
+            try:
+                img = q1.get()[num[1]:num[3], num[0]:num[2]]
+                poses, _ = pose_detector(img)
+                outq3 = poses, num
+                q3.put(outq3)
+            except TypeError:
+                pass
 
-def webcam_producer(q1):
-    capture = cv2.VideoCapture(0)
+def webcam_producer(q1, q7, source=0):
+    capture = cv2.VideoCapture(source)
+    if source == 0:
+        while True:
+            ret, frame = capture.read()
+            q1.put(frame)
+        capture.release()
+    else:
+        fps = capture.get(cv2.CAP_PROP_FPS)
+        w = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        while True:
+            ret, frame = capture.read()
+            if ret:
+                cv2.waitKey(33)
+                q1.put(frame)
+            else:
+                break
+            outq7 = fps, w, h, source, ret
+            q7.put(outq7)
+        capture.release()
 
-    while True:
-        ret, frame = capture.read()
-        q1.put(frame)
-    capture.release()
-
-def webcam_out(q1, q2, q3, q4):
-    score = 0
-    Before_flag = False
+def webcam_out(q1, q2, q3, q4, q5, q6, q7):
+    Squat_score, Bench_score, Dead_score  = 0, 0, 0
+    Squat_Before_flag, Bench_Before_flag, Dead_Before_flag = False, False, False
+    fourcc = 'mp4v'  # output video codec
+    x = 0
     while True:
         if not q1.empty():
             frame = q1.get()
@@ -135,33 +177,143 @@ def webcam_out(q1, q2, q3, q4):
                 poses, num = q3.get()
             try:
                 frame2 = frame[num[1]:num[3], num[0]:num[2]].copy()
-                canvas, score, Before_flag, status = draw_person_pose(frame2, poses, score, Before_flag, name)
+                canvas, Squat_score, Bench_score, Dead_score, Squat_Before_flag, Bench_Before_flag, Dead_Before_flag, \
+                squat_status, bench_status, dead_status = draw_person_pose(frame2, poses, Squat_score, Bench_score, Dead_score,\
+                     Squat_Before_flag, Bench_Before_flag, Dead_Before_flag, name)
                 frame[num[1]:num[3], num[0]:num[2]] = canvas
+                outq6 = Squat_score, Bench_score, Dead_score
+                q6.put(outq6)
             except:
                 pass
             try:
                 plot_one_box(q2num, frame, label=label, color=colors, line_thickness=3)
             except:
                 pass
-            cv2.imshow("webcam", frame)
-        if cv2.waitKey(1) > 0: break
+            q5.put(frame)
+        if not q7.empty():
+            fps, w, h, source, ret = q7.get()
+            try:
+                vid_writer
+            except UnboundLocalError:
+                vid_writer = cv2.VideoWriter(f"{source[:-4]}_pose_estimation.mp4", cv2.VideoWriter_fourcc(*fourcc), fps,
+                                             (w, h))
+            try:
+                vid_writer.write(frame)
+            except UnboundLocalError:
+                pass
+            x = 0
+        elif q7.empty():
+            print(x)
+            if x == 2000:
+                vid_writer.release()
+                break
+            x += 1
+
+class consumer1(QThread):
+    changePixmap = pyqtSignal(QImage)
+    def __init__(self, q5):
+        super().__init__()
+        self.q5 = q5
+
+    def run(self):
+        while True:
+            if not self.q5.empty():
+                rgbImage = cv2.cvtColor(q5.get(), cv2.COLOR_BGR2RGB)
+                h, w, ch = rgbImage.shape
+                bytesPerLine = ch * w
+                convertToQtFormat = QImage(rgbImage.data, w, h, bytesPerLine, QImage.Format_RGB888)
+                data1 = convertToQtFormat.scaled(640, 480, Qt.KeepAspectRatio)
+                self.changePixmap.emit(data1)
+
+class consumer2(QThread):
+    renewal = pyqtSignal(tuple)
+    def __init__(self, q6):
+        super().__init__()
+        self.q6 = q6
+
+    def run(self):
+        while True:
+            if not self.q6.empty():
+                data2 = q6.get()
+                self.renewal.emit(data2)
+
+class Exam(QWidget, form_window):
+    def __init__(self, q1, q2, q3, q4, q5, q6, q7):
+        super().__init__()
+        self.setupUi(self)
+        self.init_UI()
+        self.consumer1 = consumer1(q5)
+        self.consumer1.changePixmap.connect(self.setImage)
+        self.consumer1.start()
+        self.consumer2 = consumer2(q6)
+        self.consumer2.renewal.connect(self.label_change)
+        self.consumer2.start()
+        self.btn_webcam.clicked.connect(self.webcam)
+        self.btn_upload.clicked.connect(self.upload)
+        self.q1 = q1
+        self.q2 = q2
+        self.q3 = q3
+        self.q4 = q4
+        self.q5 = q5
+        self.q6 = q6
+        self.q7 = q7
+
+    def init_UI(self):
+        self.p1_flag = False
+
+    @pyqtSlot(QImage)
+    def setImage(self, data1):
+        self.lbl_image.setPixmap(QPixmap.fromImage(data1))
+
+    @pyqtSlot(tuple)
+    def label_change(self, data1):
+        Squat_score, Bench_score, Dead_score = data1
+        self.lbl_squat.setText(str(Squat_score))
+        self.lbl_bench.setText(str(Bench_score))
+        self.lbl_dead.setText(str(Dead_score))
+
+    def webcam(self):
+        if self.p1_flag == True:
+            self.p1.kill()
+            self.p4.kill()
+        self.p1 = Process(name="webcam_producer", target=webcam_producer, args=(self.q1, self.q7, ), daemon=True)
+        self.p1.start()
+        self.p4 = Process(name="webcam_out", target=webcam_out, args=(self.q1, self.q2, self.q3, self.q4, self.q5,\
+                                                                      self.q6, self.q7, ), daemon=True)
+        self.p4.start()
+        self.p1_flag = True
+
+    def upload(self):
+        if self.p1_flag == True:
+            self.p1.kill()
+            self.p4.kill()
+        self.path = QFileDialog.getOpenFileName(self, "Open file", '', "mp4 file(*.mp4);;avi files(*.avi);;All files(*.*)", '')
+        if self.path[0]:
+            self.p1 = Process(name="webcam_producer", target=webcam_producer, args=(self.q1, self.q7, self.path[0], ), daemon=True)
+            self.p1.start()
+            self.p4 = Process(name="webcam_out", target=webcam_out, args=(self.q1, self.q2, self.q3, self.q4, self.q5, \
+                                                                          self.q6, self.q7,), daemon=True)
+            self.p4.start()
+            self.p1_flag = True
 
 if __name__ == "__main__":
     q1 = Queue()
     q2 = Queue()
     q3 = Queue()
     q4 = Queue()
+    q5 = Queue()
+    q6 = Queue()
+    q7 = Queue()
 
-    p1 = Process(name="webcam_producer", target=webcam_producer, args=(q1, ), daemon=True)
-    p2 = Process(name="yolo", target=setup, args=(q1, q2,'weights/health_best.pt', 0.7, ), daemon=True)
-    p3 = Process(name="webcam_out", target=webcam_out, args=(q1, q2, q3, q4, ), daemon=True)
-    p4 = Process(name='pose_estimation', target=pose_estimation, args=(q1, q3, q4, ), daemon=True)
-    p1.start()
+    p2 = Process(name="yolo", target=setup, args=(q1, q2, 'weights/exercise3_m_best.pt', 0.3, ), daemon=True)
+    p3 = Process(name='pose_estimation', target=pose_estimation, args=(q1, q3, q4, ), daemon=True)
+
+
     p2.start()
     p3.start()
-    p4.start()
 
-    p1.join()
-    p2.join()
-    p3.join()
-    p4.join()
+    # Main process
+    app = QApplication(sys.argv)
+    MainWindow = Exam(q1, q2, q3, q4, q5, q6, q7)
+    MainWindow.show()
+    sys.exit(app.exec_())
