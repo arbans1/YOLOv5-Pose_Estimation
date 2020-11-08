@@ -541,7 +541,8 @@ class PoseDetector(object):
         return poses, scores
 
 
-def draw_person_pose(orig_img, poses, score, Before_flag, exercise=None):
+def draw_person_pose(orig_img, poses, Squat_score, Bench_score, Dead_score,\
+                     Squat_Before_flag, Bench_Before_flag, Dead_Before_flag, exercise=None):
     if len(poses) == 0:
         return orig_img
     # 선 색깔
@@ -559,7 +560,25 @@ def draw_person_pose(orig_img, poses, score, Before_flag, exercise=None):
         [0, 170, 255], [0, 85, 255], [0, 0, 255], [85, 0, 255], [170, 0, 255],
         [255, 0, 255], [255, 0, 170], [255, 0, 85]]
 
-    if exercise == 'BenchPress':
+    if exercise == 'BarbellSquat':
+        # 선 색깔
+        limb_colors = [
+            [0, 0, 255], [0, 0, 255], [0, 0, 255], [0, 0, 255], [0, 0, 255],
+            [0, 0, 255], [0, 255, 0], [0, 255, 0], [0, 255, 0], [0, 255, 0],
+            [0, 255, 0], [0, 255, 0], [0, 255, 0], [0, 255, 0], [0, 255, 0],
+            [0, 255, 0], [0, 255, 0], [0, 255, 0], [0, 255, 0],
+        ]
+
+    elif exercise == 'BenchPress':
+        # 선 색깔
+        limb_colors = [
+            [0, 255, 0], [0, 255, 0], [0, 255, 0], [0, 255, 0], [0, 255, 0],
+            [0, 255, 0], [0, 0, 255], [0, 0, 255], [0, 0, 255], [0, 255, 0],
+            [0, 0, 255], [0, 0, 255], [0, 0, 255], [0, 255, 0], [0, 255, 0],
+            [0, 255, 0], [0, 255, 0], [0, 255, 0], [0, 255, 0],
+        ]
+
+    elif exercise == 'Deadlift':
         # 선 색깔
         limb_colors = [
             [0, 255, 0], [0, 255, 0], [0, 255, 0], [0, 255, 0], [0, 255, 0],
@@ -575,7 +594,7 @@ def draw_person_pose(orig_img, poses, score, Before_flag, exercise=None):
         # 부위
         all_distance = 0
         for i, (limb, color) in enumerate(zip(params['limbs_point'], limb_colors)):
-            if i != 9 and i != 13:  # don't show ear-shoulder connection
+            if i != 9 and i != 13 and i != 14 and i != 15 and i != 16 and i != 17 and i != 18:  # don't show connection
                 limb_ind = np.array(limb)
                 if np.all(pose[limb_ind][:, 2] != 0):
                     joint1, joint2 = pose[limb_ind][:, :2]
@@ -584,9 +603,9 @@ def draw_person_pose(orig_img, poses, score, Before_flag, exercise=None):
                     all_distance += distance
 
         dis_list.append(all_distance)
-        if all_distance >= 300:
+        if all_distance >= 350:
             for i, (limb, color) in enumerate(zip(params['limbs_point'], limb_colors)):
-                if i != 9 and i != 13:  # don't show ear-shoulder connection
+                if i != 9 and i != 13 and i != 14 and i != 15 and i != 16 and i != 17 and i != 18:  # don't show connection
                     limb_ind = np.array(limb)
                     if np.all(pose[limb_ind][:, 2] != 0):
                         joint1, joint2 = pose[limb_ind][:, :2]
@@ -604,71 +623,223 @@ def draw_person_pose(orig_img, poses, score, Before_flag, exercise=None):
     j = 0
     sort_dis_list = dis_list.copy()
     sort_dis_list.sort(reverse=True)
-    status = 'Unknown'
+    squat_status = 'Unknown'
+    bench_status = 'Unknown'
+    dead_status = 'Unknown'
     for pose in poses.round().astype('i'):
-        # if j == dis_list.index(sort_dis_list[0]) and exercise=='BenchPress':
-        inner_angle1, inner_angle2 = None, None
-        try:
-            a = np.array(list(points[2]))
-            b = np.array(list(points[3]))
-            c = np.array(list(points[4]))
+        if j == dis_list.index(sort_dis_list[0]) and exercise == 'BarbellSquat':
+            inner_angle1, inner_angle2 = None, None
+            try:
+                # 왼쪽 허리 무릎 발
+                a = np.array(list(points[11]))
+                b = np.array(list(points[12]))
+                c = np.array(list(points[13]))
 
-            # create vectors
-            ba = a - b
-            bc = c - b
-            # calculate angle
-            cosine_angle1 = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
-            angle1 = np.arccos(cosine_angle1)
-            inner_angle1 = np.degrees(angle1)
-        except TypeError or UnboundLocalError:
-            pass
+                # create vectors
+                ba = a - b
+                bc = c - b
+                # calculate angle
+                cosine_angle1 = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+                angle1 = np.arccos(cosine_angle1)
+                inner_angle1 = np.degrees(angle1)
+            except TypeError or UnboundLocalError:
+                pass
+            try:
+                # 오른쪽 허리 무릎 발
+                d = np.array(list(points[8]))
+                e = np.array(list(points[9]))
+                f = np.array(list(points[10]))
 
-        try:
-            d = np.array(list(points[5]))
-            e = np.array(list(points[6]))
-            f = np.array(list(points[7]))
+                # create vectors
+                ed = d - e
+                ef = f - e
+                # calculate angle
+                cosine_angle2 = np.dot(ed, ef) / (np.linalg.norm(ed) * np.linalg.norm(ef))
+                angle2 = np.arccos(cosine_angle2)
+                inner_angle2 = np.degrees(angle2)
+            except TypeError:
+                pass
+            Squat_score_flag1 = Squat_Before_flag
 
-            # create vectors
-            ed = d - e
-            ef = f - e
-            # calculate angle
-            cosine_angle2 = np.dot(ed, ef) / (np.linalg.norm(ed) * np.linalg.norm(ef))
-            angle2 = np.arccos(cosine_angle2)
-            inner_angle2 = np.degrees(angle2)
-        except TypeError:
-            pass
-        score_flag1 = Before_flag
-        if exercise == "BenchPress":
             if inner_angle1 != None and inner_angle2 == None:
                 if inner_angle1 < 100:
                     status = 'Down'
-                    Before_flag = True
-                elif inner_angle1 >= 100:
+                    Squat_Before_flag = True
+                elif 100 <= inner_angle1 and inner_angle1 <= 120:
+                    status = status
+                    Squat_Before_flag = Squat_Before_flag
+                elif inner_angle1 >= 120:
                     status = 'Up'
-                    Before_flag = False
+                    Squat_Before_flag = False
             elif inner_angle2 != None and inner_angle1 == None:
                 if inner_angle2 < 100:
                     status = 'Down'
-                    Before_flag = True
-                elif inner_angle2 >= 100:
-                    status = 'Up'
-                    Before_flag = False
+                    Squat_Before_flag = True
+                elif 100 <= inner_angle2 and inner_angle2 <= 120:
+                    pass
+                elif inner_angle2 >= 120:
+                    status = status
+                    Squat_Before_flag = Squat_Before_flag
             elif inner_angle1 == None and inner_angle2 == None:
                 pass
             else:
                 if inner_angle2 < 100 or inner_angle1 < 100:
                     status = 'Down'
-                    Before_flag = True
-                elif inner_angle2 >= 100 or inner_angle1 >= 100:
+                    Squat_Before_flag = True
+                elif (100 <= inner_angle2 and inner_angle2 <= 120) or (100 <= inner_angle1 and inner_angle1 <= 120):
+                    status = status
+                    Squat_Before_flag = Squat_Before_flag
+                elif inner_angle2 >= 120 or inner_angle1 >= 120:
                     status = 'Up'
-                    Before_flag = False
-            score_flag2 = Before_flag
+                    Squat_Before_flag = False
+            Squat_score_flag2 = Squat_Before_flag
 
-        if score_flag1 == True and score_flag2 == False:
-            score += 1
+            if Squat_score_flag1 == True and Squat_score_flag2 == False:
+                Squat_score += 1
+
+        elif j == dis_list.index(sort_dis_list[0]) and exercise == 'BenchPress':
+            inner_angle1, inner_angle2 = None, None
+            try:
+                a = np.array(list(points[2]))
+                b = np.array(list(points[3]))
+                c = np.array(list(points[4]))
+
+                # create vectors
+                ba = a - b
+                bc = c - b
+                # calculate angle
+                cosine_angle1 = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+                angle1 = np.arccos(cosine_angle1)
+                inner_angle1 = np.degrees(angle1)
+            except TypeError or UnboundLocalError:
+                pass
+
+            try:
+                d = np.array(list(points[5]))
+                e = np.array(list(points[6]))
+                f = np.array(list(points[7]))
+
+                # create vectors
+                ed = d - e
+                ef = f - e
+                # calculate angle
+                cosine_angle2 = np.dot(ed, ef) / (np.linalg.norm(ed) * np.linalg.norm(ef))
+                angle2 = np.arccos(cosine_angle2)
+                inner_angle2 = np.degrees(angle2)
+            except TypeError:
+                pass
+
+            Bench_score_flag1 = Bench_Before_flag
+            if inner_angle1 != None and inner_angle2 == None:
+                if inner_angle1 < 100:
+                    bench_status = 'Down'
+                    Bench_Before_flag = True
+                elif 100 <= inner_angle1 and inner_angle1 <= 120:
+                    bench_status = bench_status
+                    Bench_Before_flag = Bench_Before_flag
+                elif inner_angle1 >= 120:
+                    bench_status = 'Up'
+                    Dead_Before_flag = False
+            elif inner_angle2 != None and inner_angle1 == None:
+                if inner_angle2 < 100:
+                    bench_status = 'Down'
+                    Bench_Before_flag = True
+                elif 100 <= inner_angle2 and inner_angle2 <= 120:
+                    pass
+                elif inner_angle2 >= 120:
+                    bench_status = bench_status
+                    Bench_Before_flag = Bench_Before_flag
+            elif inner_angle1 == None and inner_angle2 == None:
+                pass
+            else:
+                if inner_angle2 < 100 or inner_angle1 < 100:
+                    bench_status = 'Down'
+                    Bench_Before_flag = True
+                elif (100 <= inner_angle2 and inner_angle2 <= 120) or (100 <= inner_angle1 and inner_angle1 <= 120):
+                    bench_status = bench_status
+                    Bench_Before_flag = Bench_Before_flag
+                elif inner_angle2 >= 120 or inner_angle1 >= 120:
+                    bench_status = 'Up'
+                    Bench_Before_flag = False
+            Bench_score_flag2 = Bench_Before_flag
+
+            if Bench_score_flag1 == True and Bench_score_flag2 == False:
+                Bench_score += 1
+
+        elif j == dis_list.index(sort_dis_list[0]) and exercise == 'Deadlift':
+            inner_angle1, inner_angle2 = None, None
+            try:
+                # 왼쪽 허리 무릎 발
+                a = np.array(list(points[11]))
+                b = np.array(list(points[12]))
+                c = np.array(list(points[13]))
+
+                # create vectors
+                ba = a - b
+                bc = c - b
+                # calculate angle
+                cosine_angle1 = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+                angle1 = np.arccos(cosine_angle1)
+                inner_angle1 = np.degrees(angle1)
+            except TypeError or UnboundLocalError:
+                pass
+            try:
+                # 오른쪽 허리 무릎 발
+                d = np.array(list(points[8]))
+                e = np.array(list(points[9]))
+                f = np.array(list(points[10]))
+
+                # create vectors
+                ed = d - e
+                ef = f - e
+                # calculate angle
+                cosine_angle2 = np.dot(ed, ef) / (np.linalg.norm(ed) * np.linalg.norm(ef))
+                angle2 = np.arccos(cosine_angle2)
+                inner_angle2 = np.degrees(angle2)
+            except TypeError:
+                pass
+            Dead_score_flag1 = Dead_Before_flag
+
+            if inner_angle1 != None and inner_angle2 == None:
+                if inner_angle1 < 100:
+                    dead_status = 'Down'
+                    Dead_Before_flag = True
+                elif 100 <= inner_angle1 and inner_angle1 <= 120:
+                    dead_status = dead_status
+                    Dead_Before_flag = Dead_Before_flag
+                elif inner_angle1 >= 120:
+                    dead_status = 'Up'
+                    Dead_Before_flag = False
+            elif inner_angle2 != None and inner_angle1 == None:
+                if inner_angle2 < 100:
+                    dead_status = 'Down'
+                    Dead_Before_flag = True
+                elif 100 <= inner_angle2 and inner_angle2 <= 120:
+                    pass
+                elif inner_angle2 >= 120:
+                    dead_status = dead_status
+                    Dead_Before_flag = Dead_Before_flag
+            elif inner_angle1 == None and inner_angle2 == None:
+                pass
+            else:
+                if inner_angle2 < 100 or inner_angle1 < 100:
+                    dead_status = 'Down'
+                    Dead_Before_flag = True
+                elif (100 <= inner_angle2 and inner_angle2 <= 120) or (100 <= inner_angle1 and inner_angle1 <= 120):
+                    dead_status = dead_status
+                    Dead_Before_flag = Dead_Before_flag
+                elif inner_angle2 >= 120 or inner_angle1 >= 120:
+                    dead_status = 'Up'
+                    Dead_Before_flag = False
+            Dead_score_flag2 = Dead_Before_flag
+
+            if Dead_score_flag1 == True and Dead_score_flag2 == False:
+                Dead_score += 1
+
         j+=1
 
-    return canvas, score, Before_flag, status
+    return canvas, Squat_score, Bench_score, Dead_score, Squat_Before_flag, Bench_Before_flag, Dead_Before_flag,\
+           squat_status, bench_status, dead_status
 
 if __name__ == '__main__':
     basicConfig(level=DEBUG)
