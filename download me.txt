@@ -1,3 +1,7 @@
 https://drive.google.com/file/d/1hhU0Kx3QYy1lnKkZypfWHyn_AImg1dfS/view?usp=sharing
 
+https://drive.google.com/file/d/10CnIxDFDzFd9JAVlMFsLSslhDPxf2UgT/view?usp=sharing
+
 YOLOv5-Pose_Estimation\YOLO+pose_estimation\models\coco_posenet.npz
+
+YOLOv5-Pose_Estimation\YOLO+pose_estimation\\weights\exercise3_m_best.pt
