@@ -11,6 +11,7 @@ from utils.pose_detector import PoseDetector, draw_person_pose
 from utils.general import check_img_size, non_max_suppression, scale_coords, plot_one_box, set_logging
 from utils.torch_utils import select_device
 from multiprocessing import Process, Queue
+import time
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot, Qt, QStringListModel
@@ -20,13 +21,12 @@ from PyQt5.QtGui import QImage, QPixmap
 form_window = uic.loadUiType('./utils/exercise.ui')[0]
 
 # producer
-def setup(q1, q2, weights='yolov5s.pt', conf=0.4,
+def setup(q1, q2, q8, weights='yolov5s.pt',
                    img=640, iou=0.5, device='', view='store_true', save='store_true',
                    classes='+', agnostic='store_true', augment='store_true', update='store_true'):
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default=weights, help='model.pt path(s)')
     parser.add_argument('--img-size', type=int, default=img, help='inference size (pixels)')
-    parser.add_argument('--conf-thres', type=float, default=conf, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=iou, help='IOU threshold for NMS')
     parser.add_argument('--device', default=device, help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--view-img', action=view, help='display results')
@@ -37,8 +37,8 @@ def setup(q1, q2, weights='yolov5s.pt', conf=0.4,
     parser.add_argument('--update', action=update, help='update all models')
     opt = parser.parse_args()
 
-    weights, view_img, save_txt, imgsz, argment, conf, iou, classes, agnostic_nms = \
-        opt.weights, opt.view_img, opt.save_txt, opt.img_size, opt.augment, opt.conf_thres, opt.iou_thres, opt.classes,\
+    weights, view_img, save_txt, imgsz, argment, iou, classes, agnostic_nms = \
+        opt.weights, opt.view_img, opt.save_txt, opt.img_size, opt.augment, opt.iou_thres, opt.classes,\
         opt.agnostic_nms
 
     # Initialize
@@ -59,9 +59,11 @@ def setup(q1, q2, weights='yolov5s.pt', conf=0.4,
     # Get names and colors
     names = model.module.names if hasattr(model, 'module') else model.names
     colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
-
+    conf = 0.3
     while True:
         if not q1.empty():
+            if not q8.empty():
+                conf = q8.get()
             frame = q1.get()
             yolo(frame, q2, imgsz, device, half, model, augment, conf, iou, classes, agnostic_nms, names, colors)
 
@@ -98,7 +100,9 @@ def yolo(q1, q2, imgsz, device, half, model, augment, conf, iou, classes, agnost
 
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
-                    label = '%s %.2f' % (names[int(cls)], conf)
+                    conf = re.findall("tensor\((.*).", str(conf).split(", ")[0])[0]
+                    conf = round(float(conf) * 100, 1)
+                    label = f"{names[int(cls)]} {conf}%"
                     num = []
                     f = str(xyxy).split(", ")
                     for string in f:
@@ -119,7 +123,7 @@ def pose_estimation(q1, q3, q4):
         if not q4.empty():
             before_num = num
             num = q4.get()
-            if before_num[0] != 0 and j % 7 != 0:
+            if before_num[0] != 0 and j % 15 != 0:
                 if before_num[0] < num[0]:
                     num[0] = before_num[0]
                 if before_num[1] < num[1]:
@@ -203,10 +207,13 @@ def webcam_out(q1, q2, q3, q4, q5, q6, q7):
                 pass
             x = 0
         elif q7.empty():
-            print(x)
-            if x == 2000:
-                vid_writer.release()
-                break
+            try:
+                vid_writer
+                if x == 2000:
+                    vid_writer.release()
+                    break
+            except UnboundLocalError:
+                pass
             x += 1
 
 class consumer1(QThread):
@@ -238,7 +245,7 @@ class consumer2(QThread):
                 self.renewal.emit(data2)
 
 class Exam(QWidget, form_window):
-    def __init__(self, q1, q2, q3, q4, q5, q6, q7):
+    def __init__(self, q1, q2, q3, q4, q5, q6, q7, q8):
         super().__init__()
         self.setupUi(self)
         self.init_UI()
@@ -250,6 +257,7 @@ class Exam(QWidget, form_window):
         self.consumer2.start()
         self.btn_webcam.clicked.connect(self.webcam)
         self.btn_upload.clicked.connect(self.upload)
+        self.spn_conf.valueChanged.connect(self.conf_change)
         self.q1 = q1
         self.q2 = q2
         self.q3 = q3
@@ -257,6 +265,7 @@ class Exam(QWidget, form_window):
         self.q5 = q5
         self.q6 = q6
         self.q7 = q7
+        self.q8 = q8
 
     def init_UI(self):
         self.p1_flag = False
@@ -296,6 +305,11 @@ class Exam(QWidget, form_window):
             self.p4.start()
             self.p1_flag = True
 
+    def conf_change(self):
+        self.conf = (self.lcd_conf.intValue()/100)
+        if self.p1_flag == True:
+            self.q8.put(self.conf)
+
 if __name__ == "__main__":
     q1 = Queue()
     q2 = Queue()
@@ -304,8 +318,9 @@ if __name__ == "__main__":
     q5 = Queue()
     q6 = Queue()
     q7 = Queue()
+    q8 = Queue()
 
-    p2 = Process(name="yolo", target=setup, args=(q1, q2, 'weights/exercise3_m_best.pt', 0.3, ), daemon=True)
+    p2 = Process(name="yolo", target=setup, args=(q1, q2, q8, 'weights/exercise3_m_best.pt', ), daemon=True)
     p3 = Process(name='pose_estimation', target=pose_estimation, args=(q1, q3, q4, ), daemon=True)
 
 
@@ -314,6 +329,6 @@ if __name__ == "__main__":
 
     # Main process
     app = QApplication(sys.argv)
-    MainWindow = Exam(q1, q2, q3, q4, q5, q6, q7)
+    MainWindow = Exam(q1, q2, q3, q4, q5, q6, q7, q8)
     MainWindow.show()
     sys.exit(app.exec_())
