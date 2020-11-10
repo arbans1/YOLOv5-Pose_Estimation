@@ -21,29 +21,12 @@ from PyQt5.QtGui import QImage, QPixmap
 form_window = uic.loadUiType('./utils/exercise.ui')[0]
 
 # producer
-def setup(q1, q2, q8, weights='yolov5s.pt',
-                   img=640, iou=0.5, device='', view='store_true', save='store_true',
-                   classes='+', agnostic='store_true', augment='store_true', update='store_true'):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default=weights, help='model.pt path(s)')
-    parser.add_argument('--img-size', type=int, default=img, help='inference size (pixels)')
-    parser.add_argument('--iou-thres', type=float, default=iou, help='IOU threshold for NMS')
-    parser.add_argument('--device', default=device, help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    parser.add_argument('--view-img', action=view, help='display results')
-    parser.add_argument('--save-txt', action=save, help='save results to *.txt')
-    parser.add_argument('--classes', nargs=classes, type=int, help='filter by class: --class 0, or --class 0 2 3')
-    parser.add_argument('--agnostic-nms', action=agnostic, help='class-agnostic NMS')
-    parser.add_argument('--augment', action=augment, help='augmented inference')
-    parser.add_argument('--update', action=update, help='update all models')
-    opt = parser.parse_args()
-
-    weights, view_img, save_txt, imgsz, argment, iou, classes, agnostic_nms = \
-        opt.weights, opt.view_img, opt.save_txt, opt.img_size, opt.augment, opt.iou_thres, opt.classes,\
-        opt.agnostic_nms
+def setup(q1, q2, q8, weights='yolov5s.pt', imgsz=640, iou=0.5, classes=None,
+          agnostic=False, augment=False):
 
     # Initialize
     set_logging()
-    device = select_device(opt.device)
+    device = select_device('')
     half = device.type != 'cpu'  # half precision only supported on CUDA
 
     # Load model
@@ -65,7 +48,7 @@ def setup(q1, q2, q8, weights='yolov5s.pt',
             if not q8.empty():
                 conf = q8.get()
             frame = q1.get()
-            yolo(frame, q2, imgsz, device, half, model, augment, conf, iou, classes, agnostic_nms, names, colors)
+            yolo(frame, q2, imgsz, device, half, model, augment, conf, iou, classes, agnostic, names, colors)
 
 
 def yolo(q1, q2, imgsz, device, half, model, augment, conf, iou, classes, agnostic_nms, names, colors):
